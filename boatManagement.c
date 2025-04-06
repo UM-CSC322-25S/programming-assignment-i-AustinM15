@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdbool.h>
+
 
 #define MAX_BOATS 120
 #define MAX_NAME_LEN 128
@@ -55,7 +57,7 @@ void loadData(const char *filename, Boat *boats[], int *count) {
         char *token = strtok(line, ",");  // Separate token
         if (!token) { free(boat); continue; } // If no token move on
         strncpy(boat->name, token, MAX_NAME_LEN); // Set boats name
-        boat->name[MAX_NAME_LEN - 1] = '\0';  // Ensure boat name under 127 characters
+        boat->name[MAX_NAME_LEN - 1] = '\0';  // Ensure boat name under 127 characters by adding null to stop issue with strncpy
 
 	/* Separate next token, if one exists copy it into boats length */ 
         token = strtok(NULL, ","); 
@@ -74,7 +76,7 @@ void loadData(const char *filename, Boat *boats[], int *count) {
         else if (strcasecmp(token, "storage") == 0)
             boat->type = STORAGE;
         else {
-            free(boat);
+            free(boat);  // No type found, boat is invalid so free it
             continue;
         }
 
@@ -119,9 +121,14 @@ void saveData(const char *filename, Boat *boats[], int count) {
         fprintf(stderr, "Error opening file for writing.\n");
         return;
     }
+	/* Iterate over every boat */
     for (int i = 0; i < count; i++) {
         Boat *boat = boats[i];
-        /* CSV Format: name,length,placeType,extra,amountOwed */
+        /* 
+	CSV Format is name,length,placeType,extra,amountOwed
+	The placetype needs to be evaluated first however because
+        this is what determines the extra info attached
+        */
         switch (boat->type) {
             case SLIP:
                 fprintf(fp, "%s,%d,slip,%d,%.2f\n", boat->name, boat->length,
@@ -149,8 +156,8 @@ void saveData(const char *filename, Boat *boats[], int count) {
 void printInventory(Boat *boats[], int count) {
     for (int i = 0; i < count; i++) {
         Boat *boat = boats[i];
-        printf("%-20s %2d' ", boat->name, boat->length);
-        switch (boat->type) {
+        printf("%-20s %2d' ", boat->name, boat->length);  // Prints generic info every boat has
+        switch (boat->type) {  // Each placetype has different extra info to decide on
             case SLIP:
                 printf("   slip   # %d", boat->extra.slipNumber);
                 break;
@@ -164,12 +171,12 @@ void printInventory(Boat *boats[], int count) {
                 printf(" storage   # %d", boat->extra.storageSpace);
                 break;
         }
-        printf("   Owes $%8.2f\n", boat->amountOwed);
+        printf("   Owes $%8.2f\n", boat->amountOwed);  // More generec info for the boats
     }
 }
 
 
-/* Gets index of boat */
+/* Gets index of boat by standard search*/
 int findBoatIndex(Boat *boats[], int count, const char *name) {
     for (int i = 0; i < count; i++) {
         if (strcasecmp(boats[i]->name, name) == 0)
@@ -180,25 +187,36 @@ int findBoatIndex(Boat *boats[], int count, const char *name) {
 
 
 
-/* Parse boat from single line of CSV formatted info (for use in adding boats) */
+/* Parse boat from single line of formatted info from user */
 Boat *parseBoatFromCSV(const char *csvLine) {
     Boat *boat = malloc(sizeof(Boat));
+    /* 
+    Checks to make sure memory for size boat was allocated right, 
+    if not give error message (unlikely to be needed but good practice) 
+    */
     if (!boat) {
         fprintf(stderr, "Memory allocation error.\n");
         exit(1);
     }
-    char lineCopy[256];
+    char lineCopy[256]; 
     strncpy(lineCopy, csvLine, sizeof(lineCopy));
-    lineCopy[sizeof(lineCopy)-1] = '\0';
+    lineCopy[sizeof(lineCopy)-1] = '\0'; // Remove new line so we just have the string
     char *token = strtok(lineCopy, ",");
     if (!token) { free(boat); return NULL; }
-    strncpy(boat->name, token, MAX_NAME_LEN);
-    boat->name[MAX_NAME_LEN-1] = '\0';
 
+    /* Copies the token separated to boat name, with maximum length in mind */
+    strncpy(boat->name, token, MAX_NAME_LEN);
+    boat->name[MAX_NAME_LEN-1] = '\0';  // Remove new line
+
+	/* Copies the token into boat length if there is a token, else free up the memory */
     token = strtok(NULL, ",");
     if (!token) { free(boat); return NULL; }
     boat->length = atoi(token);
 
+/* 
+ Takes new token, and then determines type of boat, and based on the type of 
+ boat uses based on defined enum, copy the corresponding string type into boat  
+ */
     token = strtok(NULL, ",");
     if (!token) { free(boat); return NULL; }
     if (strcasecmp(token, "slip") == 0)
@@ -211,6 +229,7 @@ Boat *parseBoatFromCSV(const char *csvLine) {
         boat->type = STORAGE;
     else { free(boat); return NULL; }
 
+    /* Checks next token, and type of boat and then copies token into extra information for given boat */
     token = strtok(NULL, ",");
     if (!token) { free(boat); return NULL; }
     switch (boat->type) {
@@ -229,6 +248,7 @@ Boat *parseBoatFromCSV(const char *csvLine) {
             break;
     }
 
+	/* Checks next token and copies it into the amount owed, since this is a universal feature */
     token = strtok(NULL, ",");
     if (!token) { free(boat); return NULL; }
     boat->amountOwed = atof(token);
@@ -247,7 +267,7 @@ void addBoat(Boat *boats[], int *count, const char *csvLine) {
     /* Create boat struct from string and check validity */
     Boat *newBoat = parseBoatFromCSV(csvLine);
     if (newBoat == NULL) {
-        printf("Invalid boat data.\n");
+        printf("Invalid boat data.\n");  // Boat was not provided in valid format, return error message
         return;
     }
     /* Insert in sorted order by boat name */
@@ -256,8 +276,8 @@ void addBoat(Boat *boats[], int *count, const char *csvLine) {
         boats[i + 1] = boats[i];
         i--;
     }
-    boats[i + 1] = newBoat;
-    (*count)++;
+    boats[i + 1] = newBoat; // Put newly created boat into array
+    (*count)++; // Increment tota boat count
 }
 
 
@@ -265,31 +285,35 @@ void addBoat(Boat *boats[], int *count, const char *csvLine) {
 void removeBoat(Boat *boats[], int *count, const char *name) {
     int index = findBoatIndex(boats, *count, name);
     if (index == -1) {
-        printf("No boat with that name\n");
+        printf("No boat with that name\n");  // Invalid or non existent boat name put in, return error message
         return;
     }
     free(boats[index]);
-    for (int i = index; i < (*count) - 1; i++) {
+	/* Now shift every boat down one in array to keep sorted order */
+    for (int i = index; i < (*count) - 1; i++) { 
         boats[i] = boats[i + 1];
     }
-    (*count)--;
+    (*count)--;  // Decrease count to account for one less boat
 }
 
 
 /* Take payment from user */
 void acceptPayment(Boat *boats[], int count, const char *name) {
     int index = findBoatIndex(boats, count, name);
+	
     /* Check if boat exists */
     if (index == -1) {
         printf("No boat with that name\n");
         return;
     }
     Boat *boat = boats[index];
+	
     char input[64];
     printf("Please enter the amount to be paid                       : ");
     if (fgets(input, sizeof(input), stdin) == NULL)
         return;
-    double payment = atof(input);
+    double payment = atof(input); // Convert to a float
+	
     /* Ensure payment does not exceed amount owed, if so do not accept */
     if (payment > boat->amountOwed) {
         printf("That is more than the amount owed, $%.2f\n", boat->amountOwed);
@@ -304,13 +328,14 @@ void acceptPayment(Boat *boats[], int count, const char *name) {
 void updateMonth(Boat *boats[], int count) {
     for (int i = 0; i < count; i++) {
         Boat *boat = boats[i];
-        double rate = 0.0;
+        double rate = 0.0; // Sets rate to 0.0 because it needs to be updated based on type of boat
         switch (boat->type) {
             case SLIP:    rate = 12.50; break;
             case LAND:    rate = 14.00; break;
             case TRAILOR: rate = 25.00; break;
             case STORAGE: rate = 11.20; break;
         }
+	    /* Add the calculated rate to the already owed amount attached to boat */
         boat->amountOwed += boat->length * rate;
     }
 }
@@ -318,8 +343,9 @@ void updateMonth(Boat *boats[], int count) {
 
 /* Main method for program, print menu and accept options */
 int main(int argc, char *argv[]) {
+    /* Check to make sure user is running program with a CSV file as the only argument */
     if (argc != 2) {
-        printf("Usage: %s BoatData.csv\n", argv[0]);
+        printf("Usage: %s BoatData.csv\n", argv[0]); // Provide corrective error message for user
         return 1;
     }
     const char *filename = argv[1];
@@ -331,15 +357,18 @@ int main(int argc, char *argv[]) {
 
     printf("Welcome to the Boat Management System\n");
     printf("-------------------------------------\n");
-    char option[10];
-    while (1) {
+    char option[10];  // 10 is chosen to have a sort of buffer for user input
+	/* Repeat forever until an exit condition later defined */
+	bool exit = false; 
+    while (exit == false) {
         printf("\n(I)nventory, (A)dd, (R)emove, (P)ayment, (M)onth, e(X)it : ");
-        if (fgets(option, sizeof(option), stdin) == NULL)
+        if (fgets(option, sizeof(option), stdin) == NULL) // Take in user input
             break;
-        option[strcspn(option, "\n")] = '\0';
+        option[strcspn(option, "\n")] = '\0'; // Sets newline created by fgets to null so strscpn ends at end of string
+	    /* If nothing is entered redo menu choices */
         if (strlen(option) == 0)
             continue;
-        char choice = toupper(option[0]);
+        char choice = toupper(option[0]); // Turning choice given to uppercase to accomodate both
         switch (choice) {
             case 'I':
                 printInventory(boats, count);
@@ -347,27 +376,27 @@ int main(int argc, char *argv[]) {
             case 'A': {
                 char csvLine[256];
                 printf("Please enter the boat data in CSV format                 : ");
-                if (fgets(csvLine, sizeof(csvLine), stdin) == NULL)
+                if (fgets(csvLine, sizeof(csvLine), stdin) == NULL) // Take in user input
                     break;
-                csvLine[strcspn(csvLine, "\n")] = '\0';
+                csvLine[strcspn(csvLine, "\n")] = '\0'; // Sets newline created by fgets to null so strscpn ends at end of string
                 addBoat(boats, &count, csvLine);
                 break;
             }
             case 'R': {
                 char nameInput[128];
                 printf("Please enter the boat name                               : ");
-                if (fgets(nameInput, sizeof(nameInput), stdin) == NULL)
+                if (fgets(nameInput, sizeof(nameInput), stdin) == NULL) // Take in user input
                     break;
-                nameInput[strcspn(nameInput, "\n")] = '\0';
+                nameInput[strcspn(nameInput, "\n")] = '\0'; // Sets newline created by fgets to null so strscpn ends at end of string
                 removeBoat(boats, &count, nameInput);
                 break;
             }
             case 'P': {
                 char nameInput[128];
                 printf("Please enter the boat name                               : ");
-                if (fgets(nameInput, sizeof(nameInput), stdin) == NULL)
+                if (fgets(nameInput, sizeof(nameInput), stdin) == NULL) // Take in user input
                     break;
-                nameInput[strcspn(nameInput, "\n")] = '\0';
+                nameInput[strcspn(nameInput, "\n")] = '\0'; // Sets newline created by fgets to null so strscpn ends at end of string
                 acceptPayment(boats, count, nameInput);
                 break;
             }
@@ -375,20 +404,18 @@ int main(int argc, char *argv[]) {
                 updateMonth(boats, count);
                 break;
             case 'X':
-                goto exit_loop;
+                exit = true;
+		break;
             default:
                 printf("Invalid option %s\n", option);
                 break;
         }
 }
 
-    /* Exit Program and save the data */
-exit_loop:
-    printf("\nExiting the Boat Management System\n");
-    /* Save updated data back to the CSV file */
-    saveData(filename, boats, count);
-    for (int i = 0; i < count; i++) {
-        free(boats[i]);
-    }
-    return 0;
+	printf("\nExiting the Boat Management System\n");
+	saveData(filename, boats, count);
+	for (int i = 0; i < count; i++) {
+	    free(boats[i]);
+	}
 }
+
