@@ -144,14 +144,6 @@ void saveData(const char *filename, Boat *boats[], int count) {
     fclose(fp);
 }
 
-/* Case insensitive comparison function needed for quick sort */
-int compareBoats(const void *a, const void *b) {
-    Boat *const *boatA = (Boat *const *) a;
-    Boat *const *boatB = (Boat *const *) b;
-    return strcasecmp((*boatA)->name, (*boatB)->name);
-}
-
-
 
 /* Prints inventory of all boats */
 void printInventory(Boat *boats[], int count) {
@@ -336,8 +328,6 @@ int main(int argc, char *argv[]) {
 
     /* Load data from file */
     loadData(filename, boats, &count);
-    /* Sort the array alphabetically by boat name */
-    qsort(boats, count, sizeof(Boat *), compareBoats);
 
     printf("Welcome to the Boat Management System\n");
     printf("-------------------------------------\n");
